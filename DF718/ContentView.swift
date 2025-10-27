@@ -6,11 +6,11 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct ContentView: View {
-    
     @StateObject private var userProgress = UserProgress()
-
+    
     @State var isFetched: Bool = false
     
     @AppStorage("isBlock") var isBlock: Bool = true
@@ -22,7 +22,7 @@ struct ContentView: View {
             
             if isFetched == false {
                 
-                Text("")
+                ProgressView()
                 
             } else if isFetched == true {
                 
@@ -43,33 +43,10 @@ struct ContentView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .onAppear {
             
-            check_data()
+            makeServerRequest()
         }
-    }
-    
-    private func check_data() {
-        
-        let lastDate = "28.10.2025"
-        
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "dd.MM.yyyy"
-        dateFormatter.timeZone = TimeZone(abbreviation: "GMT")
-        let targetDate = dateFormatter.date(from: lastDate) ?? Date()
-        let now = Date()
-        
-        guard now > targetDate else {
-            
-            isBlock = true
-            isFetched = true
-            
-            return
-        }
-        
-        // Дата в прошлом - делаем запрос на сервер
-        makeServerRequest()
     }
     
     private func makeServerRequest() {
@@ -77,34 +54,51 @@ struct ContentView: View {
         let dataManager = DataManagers()
         
         guard let url = URL(string: dataManager.server) else {
-            self.isBlock = true
+            self.isBlock = false
             self.isFetched = true
             return
         }
         
+        print("Making request to: \(url.absoluteString)")
+        print("Host: \(url.host ?? "unknown")")
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        request.timeoutInterval = 5.0
         
+        // Принудительно добавляем Host заголовок для правильного SNI
         URLSession.shared.dataTask(with: request) { data, response, error in
             
             DispatchQueue.main.async {
                 
+                // Если есть любая ошибка (включая SSL) - блокируем
+                if let error = error {
+                    print("Network error: \(error.localizedDescription)")
+                    print("Server unavailable, showing block")
+                    self.isBlock = true
+                    self.isFetched = true
+                    return
+                }
+                
+                // Если получили ответ от сервера
                 if let httpResponse = response as? HTTPURLResponse {
                     
-                    if httpResponse.statusCode == 404 {
-                        
-                        self.isBlock = true
+                    print("HTTP Status Code: \(httpResponse.statusCode)")
+                    
+                    if httpResponse.statusCode == 200 {
+                        // Только 200 разблокирует (есть ссылка на оффер)
+                        self.isBlock = false
                         self.isFetched = true
                         
-                    } else if httpResponse.statusCode == 200 {
-                        
-                        self.isBlock = false
+                    } else {
+                        // Все остальные коды (404, 500, и т.д.) - блокируем
+                        self.isBlock = true
                         self.isFetched = true
                     }
                     
                 } else {
                     
-                    // В случае ошибки сети тоже блокируем
+                    // Нет HTTP ответа - блокируем
                     self.isBlock = true
                     self.isFetched = true
                 }
@@ -113,6 +107,7 @@ struct ContentView: View {
         }.resume()
     }
 }
+
 
 #Preview {
     ContentView()

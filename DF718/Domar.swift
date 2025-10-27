@@ -6,6 +6,6 @@
 //
 
 struct DataManagers {
-    
+
     let server: String = "https://mindsparkjourney.site/8s7ZTKZH"
 }
